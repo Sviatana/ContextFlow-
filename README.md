@@ -1,205 +1,181 @@
 # ContextFlow
 
-ContextFlow is a backend service that demonstrates a retrieval-augmented generation (RAG) pipeline built with FastAPI and an OpenAI-compatible API.
+**RAG backend with FastAPI, LangChain and LangGraph**
 
-The project focuses on combining semantic search, controlled LLM generation, and response validation into a simple and maintainable backend architecture.
+ContextFlow is a backend service demonstrating a controlled LLM workflow built around retrieval, structured generation, validation and conditional repair.
 
----
+The project uses LangGraph `StateGraph` for orchestration and LangChain for prompts, embeddings, model calls and structured LLM output.
 
-## Overview
+## Workflow
 
-The service accepts a user question, retrieves relevant context from a knowledge base using embeddings, sends the context to a language model, and validates the response before returning it.
+```text
+START
+  |
+  v
+retrieve
+  |
+  v
+generate
+  |
+  v
+validate
+  | \
+  |  \ invalid
+  |   v
+  | repair
+  |   |
+  |   +------> validate
+  |
+  +----------> END
+       valid
+```
 
-The goal is not just generation, but **predictable and controlled output**.
+The workflow state contains:
 
----
+- question
+- retrieved context
+- generated answer
+- validation status
+- validation errors
+- repair attempt count
 
 ## Architecture
 
 ```text
-Client request
-  → FastAPI endpoint
-  → Retrieval layer (embeddings + similarity)
-  → Context selection
-  → Prompt construction
-  → LLM request
-  → Response validation
-  → JSON response
-````
+FastAPI
+   |
+   v
+LangGraph StateGraph
+   |
+   +--> retrieve
+   |      |
+   |      +--> OpenAIEmbeddings
+   |      +--> cosine similarity
+   |
+   +--> generate
+   |      |
+   |      +--> ChatPromptTemplate
+   |      +--> ChatOpenAI
+   |      +--> Pydantic structured output
+   |
+   +--> validate
+          |
+          +--> valid -> END
+          |
+          +--> invalid -> repair
+                            |
+                            +--> validate
+```
 
----
+## Engineering Highlights
 
-## Features
+- LangGraph `StateGraph`
+- Explicit graph nodes and edges
+- Conditional routing
+- Bounded validation/repair loop
+- Typed workflow state
+- LangChain prompt composition
+- ChatOpenAI integration
+- OpenAI embeddings
+- Pydantic structured output
+- Semantic retrieval
+- Cosine similarity
+- Explicit response validation
+- FastAPI API layer
+- Environment-based configuration
+- Unit tests for graph routing and validation
 
-* FastAPI backend service
-* OpenAI-compatible LLM integration
-* Embeddings-based semantic search
-* Simple in-memory document index
-* Response validation layer
-* Environment-based configuration
-* Clean separation of responsibilities
+## Graph
 
----
+The workflow is defined in `app/graph.py`.
+
+The main nodes are `retrieve`, `generate`, `validate`, and `repair`.
+
+Normal path:
+
+```text
+retrieval -> generation -> validation -> END
+```
+
+Repair path:
+
+```text
+retrieval -> generation -> validation -> repair -> validation -> END
+```
+
+Repair attempts are bounded by configuration to prevent an uncontrolled loop.
 
 ## Project Structure
 
 ```text
 app/
-  main.py              # FastAPI application and endpoints
-  config.py            # Environment configuration
-  schemas.py           # Request/response models
-  data/
-    documents.py       # Example knowledge base
-  services/
-    embeddings.py      # Embedding generation + similarity
-    retrieval.py       # Context retrieval logic
-    llm.py             # LLM interaction
-    validation.py      # Output validation
+├── config.py
+├── graph.py
+├── main.py
+├── schemas.py
+├── state.py
+├── data/
+│   └── documents.py
+└── services/
+    ├── llm.py
+    ├── nodes.py
+    ├── retrieval.py
+    └── validation.py
 
-.env.example           # Environment variables template
-requirements.txt       # Dependencies
+tests/
+├── test_graph.py
+└── test_validation.py
 ```
-
----
-
-## How It Works
-
-1. The client sends a question to the `/ask` endpoint
-2. The system converts the question into an embedding
-3. The embedding is compared with indexed document embeddings
-4. The most relevant documents are selected as context
-5. The context is included in the prompt sent to the LLM
-6. The model generates an answer based only on the provided context
-7. The answer is validated
-8. The response is returned in structured JSON format
-
----
-
-## Installation
-
-Create a virtual environment:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Create a `.env` file:
-
-```bash
-cp .env.example .env
-```
-
----
-
-## Configuration
-
-Example `.env`:
-
-```env
-OPENAI_API_KEY=your_api_key_here
-OPENAI_BASE_URL=https://api.openai.com/v1
-
-CHAT_MODEL=gpt-4o-mini
-EMBEDDING_MODEL=text-embedding-3-small
-```
-
----
-
-## Running the Service
-
-Start the server:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-Open API documentation:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
----
 
 ## API
 
-### POST `/ask`
+- `GET /health`
+- `POST /ask`
 
-Request:
-
-```json
-{
-  "question": "What is RAG?"
-}
-```
-
-Response:
+Example request:
 
 ```json
 {
-  "answer": "RAG stands for retrieval-augmented generation...",
-  "context": [
-    "RAG means retrieval-augmented generation..."
-  ],
-  "is_valid": true,
-  "errors": []
+  "question": "What is LangGraph used for?"
 }
 ```
 
----
+The backend initializes graph state, retrieves semantically relevant context, generates a structured answer, validates it, conditionally routes invalid output through repair, validates again, and returns the final state.
 
-## Validation Logic
+## Local Setup
 
-The response is checked before returning:
+Python 3.12 is recommended.
 
-* Empty responses are rejected
-* Very short responses are flagged
-* Weak or low-information answers are detected
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+cp .env.example .env
+uvicorn app.main:app --reload
+```
 
-This layer helps reduce unreliable outputs and improves consistency.
+Run tests and linting:
 
----
-
-## Design Notes
-
-* The project uses an in-memory document index for simplicity
-* In production, a vector database (pgvector, Qdrant, FAISS, etc.) should be used
-* Retrieval and generation are separated into different modules
-* Validation is treated as a first-class step in the pipeline
-
----
-
-## Limitations
-
-* No persistent vector storage
-* No streaming responses
-* No advanced agent behavior
-* Basic validation rules
-
----
-
-## Possible Improvements
-
-* Replace in-memory index with vector database
-* Add caching layer for embeddings
-* Introduce agent-based orchestration (LangGraph)
-* Add monitoring and metrics
-* Implement retry / fallback strategies
-
----
+```bash
+pytest -q
+ruff check app tests
+```
 
 ## Tech Stack
 
-* Python
-* FastAPI
-* Pydantic
-* OpenAI-compatible API
-* Embeddings + cosine similarity
+- Python 3.12
+- FastAPI
+- Pydantic 2
+- LangGraph
+- LangChain
+- LangChain OpenAI
+- OpenAI API
+- Embeddings
+- Semantic retrieval
+- Cosine similarity
 
+## Scope
+
+The repository intentionally keeps the knowledge base small and in memory so the orchestration and retrieval logic remain easy to inspect.
+
+The retrieval layer can later be replaced by PostgreSQL/pgvector or another vector store without changing the graph-level workflow.

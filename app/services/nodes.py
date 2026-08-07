@@ -1,50 +1,53 @@
-from app.state import AgentState
-from app.services.retrieval import retrieve_context
 from app.services.llm import generate_answer, repair_answer
+from app.services.retrieval import retrieve_context
 from app.services.validation import validate_answer
+from app.state import AgentState
 
 
-def retrieve_node(state: AgentState) -> AgentState:
+def retrieve_node(state: AgentState) -> dict:
     context = retrieve_context(state["question"])
+
     return {
-        **state,
         "context": context,
+        "errors": [],
     }
 
 
-def generate_node(state: AgentState) -> AgentState:
+def generate_node(state: AgentState) -> dict:
     answer = generate_answer(
-        question=state["question"],
-        context=state["context"],
+        state["question"],
+        state["context"],
     )
+
     return {
-        **state,
         "answer": answer,
     }
 
 
-def validate_node(state: AgentState) -> AgentState:
-    is_valid, errors = validate_answer(state["answer"])
+def validate_node(state: AgentState) -> dict:
+    errors = validate_answer(
+        question=state["question"],
+        answer=state["answer"],
+        context=state["context"],
+    )
+
     return {
-        **state,
-        "is_valid": is_valid,
+        "is_valid": not errors,
         "errors": errors,
     }
 
 
-def repair_node(state: AgentState) -> AgentState:
-    answer = repair_answer(
+def repair_node(state: AgentState) -> dict:
+    repaired_answer = repair_answer(
         question=state["question"],
         context=state["context"],
-        previous_answer=state["answer"],
+        answer=state["answer"],
         errors=state["errors"],
     )
 
-    is_valid, errors = validate_answer(answer)
-
     return {
-        **state,
-        "answer": answer,
-        "is_valid": is_valid,
-        "errors": errors,
+        "answer": repaired_answer,
+        "repair_attempts": state["repair_attempts"] + 1,
+        "is_valid": False,
+        "errors": [],
     }

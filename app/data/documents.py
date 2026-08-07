@@ -1,7 +1,30 @@
 DOCUMENTS = [
-    "RAG means retrieval-augmented generation. The system first retrieves relevant context, then sends it to the language model.",
-    "Embeddings are vector representations of text. They help compare meaning and search similar documents.",
-    "FastAPI is a Python framework for building APIs. It is commonly used for backend services.",
-    "Validation helps check model output before returning it to users. It reduces incorrect or incomplete answers.",
-    "AI agents can use tools, call APIs, retrieve data, and perform multi-step tasks."
+    (
+        "rag",
+        "Retrieval-augmented generation (RAG) combines information retrieval "
+        "with language-model generation. Relevant documents are retrieved first "
+        "and supplied to the model as context before an answer is generated.",
+    ),
+    (
+        "langgraph",
+        "LangGraph is a framework for building stateful workflows around language "
+        "models. A workflow is represented as a graph of nodes and edges and can "
+        "include conditional routing, loops, persistence, and human-in-the-loop steps.",
+    ),
+    (
+        "langchain",
+        "LangChain provides abstractions for prompts, language models, embeddings, "
+        "retrievers, tools, and composable chains used in LLM-powered applications.",
+    ),
+    (
+        "embeddings",
+        "Embeddings represent text as numerical vectors. Similarity between vectors "
+        "can be used to retrieve documents that are semantically related to a query.",
+    ),
+    (
+        "validation",
+        "LLM output should be treated as untrusted application input. Structured "
+        "schemas and explicit validation can prevent malformed output from propagating "
+        "into downstream business logic.",
+    ),
 ]

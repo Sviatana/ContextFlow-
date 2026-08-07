@@ -1,36 +1,52 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from app.graph import agent_graph
 from app.schemas import AskRequest, AskResponse
 
-
 app = FastAPI(
-    title="ContextFlow Agent",
-    description="LangGraph-based RAG workflow with validation and repair steps.",
-    version="1.0.0",
+    title="ContextFlow",
+    description=(
+        "RAG backend built with FastAPI, LangChain and LangGraph. "
+        "The workflow performs retrieval, structured generation, validation "
+        "and conditional repair."
+    ),
+    version="2.0.0",
 )
 
 
+def initial_state(question: str) -> dict:
+    return {
+        "question": question,
+        "context": [],
+        "answer": "",
+        "is_valid": False,
+        "errors": [],
+        "repair_attempts": 0,
+    }
+
+
 def run_agent(question: str) -> dict:
-    return agent_graph.invoke(
-        {
-            "question": question,
-            "context": [],
-            "answer": "",
-            "is_valid": False,
-            "errors": [],
-        }
-    )
+    return agent_graph.invoke(initial_state(question))
 
 
 @app.get("/health")
-def health_check() -> dict:
-    return {"status": "ok"}
+async def health_check() -> dict:
+    return {
+        "status": "ok",
+        "service": "contextflow",
+        "workflow": "langgraph",
+    }
 
 
 @app.post("/ask", response_model=AskResponse)
-def ask(request: AskRequest) -> AskResponse:
-    result = run_agent(request.question)
+async def ask(request: AskRequest) -> AskResponse:
+    try:
+        result = run_agent(request.question)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="AI workflow execution failed",
+        ) from exc
 
     return AskResponse(
         question=result["question"],
@@ -38,24 +54,5 @@ def ask(request: AskRequest) -> AskResponse:
         context=result["context"],
         is_valid=result["is_valid"],
         errors=result["errors"],
+        repair_attempts=result["repair_attempts"],
     )
-
-
-if __name__ == "__main__":
-    result = run_agent("What is LangGraph used for?")
-
-    print("QUESTION:")
-    print(result["question"])
-
-    print("\nANSWER:")
-    print(result["answer"])
-
-    print("\nCONTEXT:")
-    for item in result["context"]:
-        print(f"- {item}")
-
-    print("\nVALID:")
-    print(result["is_valid"])
-
-    print("\nERRORS:")
-    print(result["errors"])

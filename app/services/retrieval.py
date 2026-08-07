@@ -1,42 +1,54 @@
+from functools import lru_cache
+
+import numpy as np
+from langchain_openai import OpenAIEmbeddings
+
+from app.config import get_settings
 from app.data.documents import DOCUMENTS
-from app.services.embeddings import get_embedding, cosine_similarity
 
 
-_indexed_documents: list[dict] | None = None
+def cosine_similarity(left: list[float], right: list[float]) -> float:
+    a = np.asarray(left, dtype=float)
+    b = np.asarray(right, dtype=float)
+
+    denominator = float(np.linalg.norm(a) * np.linalg.norm(b))
+    if denominator == 0.0:
+        return 0.0
+
+    return float(np.dot(a, b) / denominator)
 
 
-def build_index() -> list[dict]:
+@lru_cache
+def get_embeddings_client() -> OpenAIEmbeddings:
+    settings = get_settings()
+
+    kwargs: dict[str, object] = {
+        "model": settings.embedding_model,
+        "api_key": settings.openai_api_key,
+    }
+
+    if settings.openai_base_url:
+        kwargs["base_url"] = settings.openai_base_url
+
+    return OpenAIEmbeddings(**kwargs)
+
+
+def retrieve_context(question: str) -> list[str]:
+    settings = get_settings()
+    embeddings = get_embeddings_client()
+
+    document_texts = [text for _, text in DOCUMENTS]
+
+    query_vector = embeddings.embed_query(question)
+    document_vectors = embeddings.embed_documents(document_texts)
+
+    ranked = sorted(
+        zip(document_texts, document_vectors, strict=True),
+        key=lambda item: cosine_similarity(query_vector, item[1]),
+        reverse=True,
+    )
+
     return [
-        {
-            "text": document,
-            "embedding": get_embedding(document),
-        }
-        for document in DOCUMENTS
+        document
+        for document, _ in ranked[: settings.retrieval_top_k]
     ]
-
-
-def get_indexed_documents() -> list[dict]:
-    global _indexed_documents
-
-    if _indexed_documents is None:
-        _indexed_documents = build_index()
-
-    return _indexed_documents
-
-
-def retrieve_context(question: str, top_k: int = 3) -> list[str]:
-    question_vector = get_embedding(question)
-    scored_documents = []
-
-    for item in get_indexed_documents():
-        score = cosine_similarity(question_vector, item["embedding"])
-        scored_documents.append(
-            {
-                "text": item["text"],
-                "score": score,
-            }
-        )
-
-    scored_documents.sort(key=lambda item: item["score"], reverse=True)
-
-    return [item["text"] for item in scored_documents[:top_k]]

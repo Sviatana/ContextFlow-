@@ -1,33 +1,44 @@
-from langgraph.graph import StateGraph, START, END
+from typing import Literal
 
-from app.state import AgentState
+from langgraph.graph import END, START, StateGraph
+
+from app.config import get_settings
 from app.services.nodes import (
-    retrieve_node,
     generate_node,
-    validate_node,
     repair_node,
+    retrieve_node,
+    validate_node,
 )
+from app.state import AgentState
 
 
-def route_after_validation(state: AgentState) -> str:
+def route_after_validation(
+    state: AgentState,
+) -> Literal["end", "repair"]:
     if state["is_valid"]:
         return "end"
+
+    settings = get_settings()
+
+    if state["repair_attempts"] >= settings.max_repair_attempts:
+        return "end"
+
     return "repair"
 
 
 def build_graph():
-    graph = StateGraph(AgentState)
+    workflow = StateGraph(AgentState)
 
-    graph.add_node("retrieve", retrieve_node)
-    graph.add_node("generate", generate_node)
-    graph.add_node("validate", validate_node)
-    graph.add_node("repair", repair_node)
+    workflow.add_node("retrieve", retrieve_node)
+    workflow.add_node("generate", generate_node)
+    workflow.add_node("validate", validate_node)
+    workflow.add_node("repair", repair_node)
 
-    graph.add_edge(START, "retrieve")
-    graph.add_edge("retrieve", "generate")
-    graph.add_edge("generate", "validate")
+    workflow.add_edge(START, "retrieve")
+    workflow.add_edge("retrieve", "generate")
+    workflow.add_edge("generate", "validate")
 
-    graph.add_conditional_edges(
+    workflow.add_conditional_edges(
         "validate",
         route_after_validation,
         {
@@ -36,9 +47,9 @@ def build_graph():
         },
     )
 
-    graph.add_edge("repair", END)
+    workflow.add_edge("repair", "validate")
 
-    return graph.compile()
+    return workflow.compile()
 
 
 agent_graph = build_graph()
